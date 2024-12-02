@@ -18,7 +18,7 @@ nlp = spacy.load("ru_core_news_sm")
 
 semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-classifier = pipeline("text-classification", model="extractor_model/model", tokenizer="extractor_model/model")
+classifier = pipeline("text-classification", model="extractor_model/rubert_model", tokenizer="extractor_model/rubert_model")
 
 # Функции предобработки
 def lemmatize_text(text):
