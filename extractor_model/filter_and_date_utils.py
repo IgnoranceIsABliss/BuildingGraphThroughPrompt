@@ -10,7 +10,7 @@ from extractor_model.models import semantic_model, data, classifier, vocabulary,
 # Функция для извлечения фильтров с помощью классификатора
 def find_filters_with_classifier(text):
     filters = []
-    label_map = {0: "client", 1: "service", 2: "management"}
+    label_map = {0: "client", 1: "service", 2: "management", 3: "status", 4: "workgroup", 5: "type"}
 
     normalized_query = normalize_text(text)
     corrected_query = correct_spelling(normalized_query, vocabulary)
