@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Dashboard</title>
+</head>
+<body>
+    <h1>Open Apache Superset Dashboard</h1>
+    <input type="text" id="dashboardId" placeholder="Enter Dashboard ID">
+    <button onclick="openDashboard()">Open Dashboard</button>
+
+    <script>
+        function openDashboard() {
+            const dashboardId = document.getElementById('dashboardId').value;
+
+            fetch('http://127.0.0.1:5000/open_dashboard', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ dashboard_id: dashboardId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>
