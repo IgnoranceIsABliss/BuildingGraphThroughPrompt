@@ -133,13 +133,12 @@ def find_dashboard_and_chart(query, dashboards_data, charts_data):
 
     try:
         query_lower = query.lower()
+        query_words = query_lower.split()
+
         matched_dashboard = None
         matched_chart = None
 
-        # Токенизация запроса
-        query_words = query_lower.split()
-
-        # Вспомогательная функция для поиска лучшего совпадения
+        # Вспомогательная функция для поиска лучшего совпадения по эмбеддингу
         def find_best_match(data, query_embedding, max_similarity, embedding_fields=['embedding']):
             best_match = None
             best_similarity = -1
@@ -147,67 +146,69 @@ def find_dashboard_and_chart(query, dashboards_data, charts_data):
                 for field in embedding_fields:
                     if field in item and item[field] is not None:
                         similarity = util.cos_sim(query_embedding, item[field]).item()
-                        if similarity >= max_similarity and similarity > best_similarity:
+                        if similarity > best_similarity and similarity >= max_similarity:
                             best_similarity = similarity
                             best_match = item
             return best_match, best_similarity
 
-        # Функция для поиска упоминания дашборда в запросе
-        def search_dashboard(query_words, dashboard_keywords, dashboards_data, fuzzy_threshold):
+        # Функция для поиска дашборда по ключевым словам
+        def search_dashboard_by_keywords(query_words, dashboard_keywords, dashboards_data, fuzzy_threshold):
             for i, word in enumerate(query_words):
-                # Проверяем наличие ключевых слов дашборда
                 for keyword in dashboard_keywords:
                     ratio = fuzz.ratio(word, keyword)
+                    # Если совпадение с ключевым словом достаточно высокое
                     if ratio >= fuzzy_threshold:
-                        # Предполагаем, что название дашборда следует после ключевого слова
-                        # Берем до 10 следующих слов для формирования названия
+                        # Предполагаем, что название дашборда следует в ближайших словах
                         potential_name_words = query_words[i+1:i+11]
-                        potential_name = " ".join(potential_name_words)
-                        if not potential_name:
-                            continue
-                        query_embedding = semantic_model.encode(potential_name, convert_to_tensor=True, show_progress_bar=False)
-                        matched_dashboard, similarity = find_best_match(dashboards_data, query_embedding, max_similarity_dashboard)
-                        if matched_dashboard:
-                            return matched_dashboard, similarity
+                        potential_name = " ".join(potential_name_words).strip()
+                        if potential_name:
+                            local_query_embedding = semantic_model.encode(potential_name, convert_to_tensor=True, show_progress_bar=False)
+                            matched_db, sim = find_best_match(dashboards_data, local_query_embedding, max_similarity_dashboard)
+                            if matched_db:
+                                return matched_db, sim
             return None, -1
 
         # Создаём эмбеддинг для полного запроса
         query_embedding = semantic_model.encode(query, convert_to_tensor=True, show_progress_bar=False)
 
-        # Поиск упомянутого дашборда
-        matched_dashboard, dashboard_similarity = search_dashboard(query_words, dashboard_keywords, dashboards_data, fuzzy_threshold)
+        # 1. Пытаемся найти дашборд по ключевым словам
+        matched_dashboard, dashboard_similarity = search_dashboard_by_keywords(query_words, dashboard_keywords, dashboards_data, fuzzy_threshold)
+
+        # 2. Если дашборд не найден по ключевым словам, ищем по всему запросу
+        if not matched_dashboard:
+            matched_dashboard, dashboard_similarity = find_best_match(dashboards_data, query_embedding, max_similarity_dashboard)
+
+        # 3. Если дашборд найден, ищем график внутри него
         if matched_dashboard:
-            logging.info(f"Найден дашборд: {matched_dashboard['dashboard_title']} (схожесть: {dashboard_similarity:.2f})")
-            # Ищем лучший график внутри найденного дашборда
-            relevant_charts = [chart for chart in charts_data if chart.get('dashboard_id') == matched_dashboard['dashboard_id']]
+            logging.info(f"Найден дашборд: {matched_dashboard.get('dashboard_title', 'Без названия')} (схожесть: {dashboard_similarity:.2f})")
+            relevant_charts = [chart for chart in charts_data if chart.get('dashboard_id') == matched_dashboard.get('dashboard_id')]
             matched_chart, chart_similarity = find_best_match(relevant_charts, query_embedding, max_similarity_chart, embedding_fields=['embedding', 'name_embedding'])
             if matched_chart:
-                logging.info(f"Найден график на указанном дашборде: {matched_chart['chart_name']} (схожесть: {chart_similarity:.2f})")
+                logging.info(f"Найден график на указанном дашборде: {matched_chart.get('chart_name', 'Без названия')} (схожесть: {chart_similarity:.2f})")
             else:
                 logging.info("На указанном дашборде не найдено подходящих графиков.")
         else:
-            # Если дашборд не упомянут, ищем лучший график по всему списку
+            # 4. Если дашборд не найден, пытаемся найти график по всему запросу
             matched_chart, chart_similarity = find_best_match(charts_data, query_embedding, max_similarity_chart, embedding_fields=['embedding', 'name_embedding'])
             if matched_chart:
-                logging.info(f"Найден график: {matched_chart['chart_name']} (схожесть: {chart_similarity:.2f})")
-                # Находим дашборд, к которому принадлежит график
+                logging.info(f"Найден график: {matched_chart.get('chart_name', 'Без названия')} (схожесть: {chart_similarity:.2f})")
+                # Пытаемся определить дашборд, к которому относится этот график
                 dashboard_id = matched_chart.get('dashboard_id')
                 if dashboard_id:
-                    dashboard_of_chart = next(
-                        (d for d in dashboards_data if d.get('dashboard_id') == dashboard_id), None
-                    )
+                    dashboard_of_chart = next((d for d in dashboards_data if d.get('dashboard_id') == dashboard_id), None)
                     if dashboard_of_chart:
-                        logging.info(f"Связанный дашборд: {dashboard_of_chart['dashboard_title']}")
                         matched_dashboard = dashboard_of_chart
+                        logging.info(f"Связанный дашборд: {matched_dashboard.get('dashboard_title', 'Без названия')}")
                     else:
                         logging.info("Связанный дашборд не найден.")
                 else:
                     logging.info("У графика отсутствует dashboard_id.")
             else:
-                logging.info("Не найден соответствующий график.")
+                logging.info("Не найден соответствующий дашборд или график по запросу.")
 
         return matched_dashboard, matched_chart
 
     except Exception as e:
         logging.error(f"Ошибка при поиске дашборда и графика: {e}")
         return None, None
+

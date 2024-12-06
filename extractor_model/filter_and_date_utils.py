@@ -31,7 +31,6 @@ def find_filters_with_classifier(text):
                 prediction = classifier(row["text"])[0]
                 predicted_label = int(prediction["label"].replace("LABEL_", ""))
                 filters.append(f"?{label_map[predicted_label]}={row['text']}")
-
     return filters
 
 # Функция для извлечения даты из текста
